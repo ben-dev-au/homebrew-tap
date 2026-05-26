@@ -16,18 +16,20 @@ class Fnd < Formula
   depends_on "openjpeg"
 
   def install
-    pybin = Formula["python@3.13"].opt_libexec/"bin/python3"
-    system pybin, "-m", "venv", libexec
+    # MuPDF's C++ bindings (built inside pymupdf via mupdfwrap.py) need >=C++14
+    # (thread_local, vector init); CI's clang defaults older and errors in C++98
+    # mode. Forcing it on CXX (the compiler itself) reaches every C++ compile,
+    # including the bindings — the same proven lever homebrew-core/mupdf uses.
+    ENV.append "CXX", "-std=c++14"
+    system Formula["python@3.13"].opt_libexec/"bin/python3", "-m", "venv", libexec
     pip = libexec/"bin/pip"
-    # pillow from source with xcb disabled: under Homebrew's env it otherwise
-    # mis-links libxcb (flat-namespace `_xcb_connect`) and fails to load. fnd
-    # never uses ImageGrab. Fresh build (--no-cache-dir) so the broken cached
-    # wheel isn't reused. Pinned to the version fndr resolves.
+    # pillow from source with xcb disabled (mis-links libxcb under brew's env).
     system pip, "install", "-v", "--no-cache-dir", "--no-binary", "pillow",
            "--config-settings=xcb=disable", "pillow==12.2.0"
-    # fndr + the remaining native deps from source (pillow already satisfied).
-    # pymupdf builds its own MuPDF (default path); backends arrive as wheels.
-    system pip, "install", "-v", "--no-binary", "tantivy,pydantic-core,pymupdf,lxml", buildpath
+    # fndr + remaining natives from source; pymupdf builds its own MuPDF (now
+    # compiles cleanly thanks to the CXX -std fix).
+    system pip, "install", "-v", "--no-cache-dir", "--no-binary",
+           "tantivy,pydantic-core,pymupdf,lxml", buildpath
     bin.install_symlink libexec/"bin/fnd"
     bin.install_symlink libexec/"bin/fndr"
   end
