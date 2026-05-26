@@ -20,9 +20,11 @@ permissions:
 jobs:
   build:
     strategy:
-      fail-fast: false
       matrix:
-        os: [macos-14, macos-13]   # arm64, x86_64
+        # arm64 only — GitHub is retiring the macos-13 Intel runner. Intel users
+        # build from source via the formula (the CXX -std fix is in `install`).
+        # Re-add "macos-13" here to also bottle x86_64 if a runner is available.
+        os: [macos-14]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
