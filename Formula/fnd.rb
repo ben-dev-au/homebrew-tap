@@ -5,8 +5,8 @@ class Fnd < Formula
   homepage "https://github.com/ben-dev-au/fnd"
   # url + sha256 are overwritten by the release workflow's bump job on
   # each `v*` tag (resolved from PyPI's JSON for the `fndr` dist).
-  url "https://files.pythonhosted.org/packages/source/f/fndr/fndr-0.0.1.tar.gz"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  url "https://files.pythonhosted.org/packages/9e/5f/2c09ec86138d697b08f74ba71e9a1dedc72016eec86e10814b8b9f00672f/fndr-0.0.1.tar.gz"
+  sha256 "1c315050283342cb0a5cdc1ecdbf1a146deabd9bb4ee396876e8469ebb14d0d8"
   license "MIT"
 
   depends_on "python@3.13"
