@@ -4,9 +4,9 @@ name: bottle
 # relocatable bottles, uploads them to a GitHub release, and writes the
 # `bottle do` block back into the formula.
 #
-# NOTE: not yet validated by a real run. macos-13 is the last Intel runner
-# GitHub offers; if it's retired, drop x86_64 and ship arm64-only bottles
-# (Intel users fall back to building from source).
+# NOTE: macos-13 is the last Intel runner GitHub offers; if it's retired or
+# can't be scheduled, drop x86_64 and ship arm64-only bottles (Intel users
+# fall back to building from source).
 on:
   workflow_dispatch:
     inputs:
@@ -25,10 +25,17 @@ jobs:
         os: [macos-14, macos-13]   # arm64, x86_64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: Homebrew/actions/setup-homebrew@master
-      - name: Tap this checkout
-        run: brew tap ben-dev-au/tap "$GITHUB_WORKSPACE"
+      - uses: actions/checkout@v5
+      - uses: Homebrew/actions/setup-homebrew@main
+      - name: Link this checkout as the tap
+        # `brew tap <name> <path>` errors with a remote mismatch because the
+        # tap is already known by its GitHub URL. Symlinking the checkout into
+        # Homebrew's Taps dir makes `brew` build the formula from THIS checkout.
+        run: |
+          tap="$(brew --repository)/Library/Taps/ben-dev-au/homebrew-tap"
+          rm -rf "$tap"
+          mkdir -p "$(dirname "$tap")"
+          ln -s "$GITHUB_WORKSPACE" "$tap"
       - name: Build + bottle
         run: |
           brew install --build-bottle --verbose ben-dev-au/tap/fnd
@@ -46,8 +53,14 @@ jobs:
     needs: build
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
-      - uses: Homebrew/actions/setup-homebrew@master
+      - uses: actions/checkout@v5
+      - uses: Homebrew/actions/setup-homebrew@main
+      - name: Link this checkout as the tap
+        run: |
+          tap="$(brew --repository)/Library/Taps/ben-dev-au/homebrew-tap"
+          rm -rf "$tap"
+          mkdir -p "$(dirname "$tap")"
+          ln -s "$GITHUB_WORKSPACE" "$tap"
       - uses: actions/download-artifact@v4
         with:
           path: bottles
