@@ -21,7 +21,7 @@ jobs:
   build:
     strategy:
       matrix:
-        # arm64 only — GitHub is retiring the macos-13 Intel runner. Intel users
+        # arm64 only: GitHub is retiring the macos-13 Intel runner. Intel users
         # build from source via the formula (the CXX -std fix is in `install`).
         # Re-add "macos-13" here to also bottle x86_64 if a runner is available.
         os: [macos-14]
@@ -54,7 +54,7 @@ jobs:
           brew bottle --json --no-rebuild \
             --root-url="https://github.com/ben-dev-au/homebrew-tap/releases/download/fnd-bottles-${{ inputs.version }}" \
             ben-dev-au/tap/fnd
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: bottle-${{ matrix.os }}
           path: |
@@ -73,7 +73,7 @@ jobs:
           rm -rf "$tap"
           mkdir -p "$(dirname "$tap")"
           ln -s "$GITHUB_WORKSPACE" "$tap"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: bottles
           merge-multiple: true
@@ -87,7 +87,9 @@ jobs:
           gh release create "$tag" bottles/*.bottle.tar.gz --title "$tag" \
             --notes "fnd ${{ inputs.version }} bottles" \
             || gh release upload "$tag" bottles/*.bottle.tar.gz --clobber
-      - name: Commit the bottle block
+      - name: Commit + push the bottle block
+        # checkout is a detached HEAD, so push the new commit explicitly to main.
         run: |
           git -c user.name="fnd-bottle-bot" -c user.email="actions@github.com" \
-            commit -am "fnd ${{ inputs.version }}: bottles" && git push || echo "no change to commit"
+            commit -am "fnd ${{ inputs.version }}: bottles"
+          git push origin HEAD:main

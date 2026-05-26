@@ -5,6 +5,11 @@ class Fnd < Formula
   sha256 "1c315050283342cb0a5cdc1ecdbf1a146deabd9bb4ee396876e8469ebb14d0d8"
   license "MIT"
 
+  bottle do
+    root_url "https://github.com/ben-dev-au/homebrew-tap/releases/download/fnd-bottles-0.0.1"
+    sha256 cellar: :any, arm64_sonoma: "de3d5a9223869f2eba9e624036cbf675326051bc41b17c75dc7d87879c191f5b"
+  end
+
   depends_on "python@3.13"
   depends_on "swig" => :build
   depends_on "rust" => :build
@@ -16,10 +21,8 @@ class Fnd < Formula
   depends_on "openjpeg"
 
   def install
-    # MuPDF's C++ bindings (built inside pymupdf via mupdfwrap.py) need >=C++14
-    # (thread_local, vector init); CI's clang defaults older and errors in C++98
-    # mode. Forcing it on CXX (the compiler itself) reaches every C++ compile,
-    # including the bindings — the same proven lever homebrew-core/mupdf uses.
+    # pymupdf's bundled MuPDF C++ bindings need >=C++14; CI clang defaults older
+    # and fails. Set it on CXX (not CXXFLAGS, which never reaches the bindings).
     ENV.append "CXX", "-std=c++14"
     system Formula["python@3.13"].opt_libexec/"bin/python3", "-m", "venv", libexec
     pip = libexec/"bin/pip"
