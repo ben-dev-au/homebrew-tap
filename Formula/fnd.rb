@@ -3,7 +3,9 @@ class Fnd < Formula
 
   desc "Fast, free, keyboard-driven document search for macOS"
   homepage "https://github.com/ben-dev-au/fnd"
-  url "https://files.pythonhosted.org/packages/source/f/fnd/fnd-0.0.1.tar.gz"
+  # url + sha256 are overwritten by the release workflow's bump job on
+  # each `v*` tag (resolved from PyPI's JSON for the `fndr` dist).
+  url "https://files.pythonhosted.org/packages/source/f/fndr/fndr-0.0.1.tar.gz"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
   license "MIT"
 
