@@ -1,0 +1,68 @@
+name: bottle
+# Self-host bottles for the from-source fnd formula. Run after the formula's
+# url/sha is bumped to a new fndr release. Builds on macOS runners, produces
+# relocatable bottles, uploads them to a GitHub release, and writes the
+# `bottle do` block back into the formula.
+#
+# NOTE: not yet validated by a real run. macos-13 is the last Intel runner
+# GitHub offers; if it's retired, drop x86_64 and ship arm64-only bottles
+# (Intel users fall back to building from source).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "fndr version to bottle (e.g. 0.0.1)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-13]   # arm64, x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Homebrew/actions/setup-homebrew@master
+      - name: Tap this checkout
+        run: brew tap ben-dev-au/tap "$GITHUB_WORKSPACE"
+      - name: Build + bottle
+        run: |
+          brew install --build-bottle --verbose ben-dev-au/tap/fnd
+          brew bottle --json --no-rebuild \
+            --root-url="https://github.com/ben-dev-au/homebrew-tap/releases/download/fnd-bottles-${{ inputs.version }}" \
+            ben-dev-au/tap/fnd
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bottle-${{ matrix.os }}
+          path: |
+            *.bottle.tar.gz
+            *.bottle.json
+
+  publish:
+    needs: build
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Homebrew/actions/setup-homebrew@master
+      - uses: actions/download-artifact@v4
+        with:
+          path: bottles
+          merge-multiple: true
+      - name: Merge bottle blocks into the formula
+        run: brew bottle --merge --write --no-commit bottles/*.bottle.json
+      - name: Upload bottles to a GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="fnd-bottles-${{ inputs.version }}"
+          gh release create "$tag" bottles/*.bottle.tar.gz --title "$tag" \
+            --notes "fnd ${{ inputs.version }} bottles" \
+            || gh release upload "$tag" bottles/*.bottle.tar.gz --clobber
+      - name: Commit the bottle block
+        run: |
+          git -c user.name="fnd-bottle-bot" -c user.email="actions@github.com" \
+            commit -am "fnd ${{ inputs.version }}: bottles" && git push || echo "no change to commit"
