@@ -27,6 +27,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: Homebrew/actions/setup-homebrew@main
+      - name: Select newest Xcode
+        # The runner's default Xcode 15.4 ships Clang 15 (C++14 default), but
+        # MuPDF 1.27's C++ bindings need C++17 (thread_local, std::vector init,
+        # stricter exception specs). Newer Xcode = Clang 16+ = C++17 default,
+        # matching the local build that compiles cleanly.
+        run: |
+          xc=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          echo "selecting $xc"
+          sudo xcode-select -s "$xc"
+          clang++ --version
       - name: Link this checkout as the tap
         # `brew tap <name> <path>` errors with a remote mismatch because the
         # tap is already known by its GitHub URL. Symlinking the checkout into
