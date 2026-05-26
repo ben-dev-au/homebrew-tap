@@ -84,6 +84,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="fnd-bottles-${{ inputs.version }}"
+          # brew writes the local bottle as `name--version`, but the URL Homebrew
+          # builds from root_url uses a single dash; rename before upload or it 404s.
+          for f in bottles/*.bottle.tar.gz; do mv "$f" "${f/--/-}"; done
           gh release create "$tag" bottles/*.bottle.tar.gz --title "$tag" \
             --notes "fnd ${{ inputs.version }} bottles" \
             || gh release upload "$tag" bottles/*.bottle.tar.gz --clobber
