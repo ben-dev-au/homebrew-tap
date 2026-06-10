@@ -91,8 +91,13 @@ jobs:
             --notes "fnd ${{ inputs.version }} bottles" \
             || gh release upload "$tag" bottles/*.bottle.tar.gz --clobber
       - name: Commit + push the bottle block
-        # checkout is a detached HEAD, so push the new commit explicitly to main.
+        # Push the new commit explicitly to main. Authenticate with the token
+        # directly — the checkout's stored credentials aren't reliably present
+        # this late in the job (after setup-homebrew + the tap symlink), which
+        # causes `could not read Username for github.com`.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git -c user.name="fnd-bottle-bot" -c user.email="actions@github.com" \
             commit -am "fnd ${{ inputs.version }}: bottles"
-          git push origin HEAD:main
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:main
