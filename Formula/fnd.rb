@@ -6,8 +6,8 @@ class Fnd < Formula
   license "MIT"
 
   bottle do
-    root_url "https://github.com/ben-dev-au/homebrew-tap/releases/download/fnd-bottles-0.0.1"
-    sha256 cellar: :any, arm64_sonoma: "de3d5a9223869f2eba9e624036cbf675326051bc41b17c75dc7d87879c191f5b"
+    root_url "https://github.com/ben-dev-au/homebrew-tap/releases/download/fnd-bottles-0.0.2"
+    sha256 cellar: :any, arm64_sonoma: "5ba521f45773dcc85c1ff4f4fbd34a6df048ae5eec80fd6c6c7bf8214e23cd00"
   end
 
   depends_on "python@3.13"
