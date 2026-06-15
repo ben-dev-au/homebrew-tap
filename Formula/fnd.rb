@@ -1,8 +1,8 @@
 class Fnd < Formula
   desc "Fast, free, keyboard-driven document search for macOS"
   homepage "https://github.com/ben-dev-au/fnd"
-  url "https://files.pythonhosted.org/packages/bd/1c/ab850cdb814a0422255f9b5bfe5892f562cc28eb8ff858c7d96e2ddcafaf/fndr-0.0.2.tar.gz"
-  sha256 "008e958a3a74c78ff97d3b99fcba434b3cacf2b761bc7e1344a47f9e393dcba0"
+  url "https://files.pythonhosted.org/packages/81/3c/bdf8ad64cb82fdb8b3ca90e60910a266913fdb6a869c70058b50f276cd54/fndr-0.0.3.tar.gz"
+  sha256 "e7fc6e75c88deec11023078aea52e7732d8da13209bbd0ebf4bb83235d4c05bf"
   license "MIT"
 
   bottle do
