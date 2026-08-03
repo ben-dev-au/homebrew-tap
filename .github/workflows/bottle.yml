@@ -143,3 +143,27 @@ jobs:
           git -c user.name="fnd-bottle-bot" -c user.email="actions@github.com" \
             commit -am "fnd $VERSION: bottles"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:main
+
+  smoke:
+    name: install from the published bottle
+    # End-to-end check of exactly what a user runs. This is the gate that was
+    # missing when 0.0.5's formula shipped pointing at 0.0.4's bottle release
+    # and every `brew upgrade fnd` 404'd for twelve hours.
+    needs: [resolve, publish]
+    runs-on: macos-14
+    steps:
+      - uses: Homebrew/actions/setup-homebrew@main
+      - name: brew install from the tap
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Tap from GitHub, not the local checkout — this must exercise the
+          # formula and bottle URL a real user resolves.
+          brew tap ben-dev-au/tap
+          brew install ben-dev-au/tap/fnd
+          out=$(fnd version 2>&1)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -qF "$VERSION" \
+            || { echo "::error::\`fnd version\` did not report $VERSION"; exit 1; }
+          echo "Homebrew install OK: fnd $VERSION"
