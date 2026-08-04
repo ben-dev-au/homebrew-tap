@@ -1,8 +1,10 @@
 name: bottle
-# Self-host bottles for the from-source fnd formula. Run after the formula's
-# url/sha is bumped to a new fndr release. Builds on macOS runners, produces
-# relocatable bottles, uploads them to a GitHub release, and writes the
-# `bottle do` block back into the formula.
+# Self-host bottles for the from-source fnd formula. Runs automatically when a
+# formula bump lands on main — the release bot strips the previous version's
+# `bottle do` block, so main serves source-only builds until this finishes —
+# and can still be dispatched by hand for a rebuild. Builds on macOS runners,
+# produces relocatable bottles, uploads them to a GitHub release, and writes
+# the `bottle do` block back into the formula.
 #
 # NOTE: macos-13 is the last Intel runner GitHub offers; if it's retired or
 # can't be scheduled, drop x86_64 and ship arm64-only bottles (Intel users
@@ -13,12 +15,68 @@ on:
       version:
         description: "fndr version to bottle (e.g. 0.0.1)"
         required: true
+  push:
+    branches: [main]
+    paths:
+      - Formula/fnd.rb
 
 permissions:
-  contents: write
+  # Least privilege: only `publish` writes (bottle release + formula commit).
+  # resolve/build merely read the formula and compile.
+  contents: read
 
 jobs:
+  resolve:
+    name: resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      needed: ${{ steps.v.outputs.needed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - id: v
+        env:
+          # Via env, not inline `${{ }}`, so the input can't be shell-injected.
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          # The formula is the source of truth: `brew install --build-bottle`
+          # builds whatever its url points at, so a dispatch input that
+          # disagrees would upload that build under the wrong tag — the same
+          # mislabelling that left 0.0.5 serving a 404. Derive from the url
+          # (PEP 625-normalised to `.../fndr-<version>.tar.gz`) and treat any
+          # input as an assertion about it, not an override.
+          formula_version=$(sed -n 's|^  url ".*/fndr-\(.*\)\.tar\.gz"$|\1|p' Formula/fnd.rb)
+          [ -n "$formula_version" ] || { echo "::error::could not determine version from Formula/fnd.rb"; exit 1; }
+          if [ -n "$INPUT_VERSION" ] && [ "$INPUT_VERSION" != "$formula_version" ]; then
+            echo "::error::dispatch input '$INPUT_VERSION' != formula '$formula_version' — bump the formula first"
+            exit 1
+          fi
+          ver="$formula_version"
+          # Reject anything that isn't a plain version before it can reach a
+          # shell downstream. Permissive enough for the rc/post/dev suffixes
+          # `uv version --bump` can produce.
+          case "$ver" in
+          *[!0-9A-Za-z.+-]*) echo "::error::refusing implausible version '$ver'"; exit 1 ;;
+          esac
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          # On a push, skip when the formula already carries bottles for this
+          # version — that is this workflow's own commit landing back on main.
+          # (Pushes made with GITHUB_TOKEN don't retrigger workflows either, so
+          # this is belt-and-braces.) A hand dispatch always rebuilds: asking
+          # for one is an explicit request to replace the existing bottle.
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && grep -q "fnd-bottles-$ver" Formula/fnd.rb; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::formula already bottled for $ver — nothing to do"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: resolve
+    if: needs.resolve.outputs.needed == 'true'
     strategy:
       matrix:
         # arm64 only: GitHub is retiring the macos-13 Intel runner. Intel users
@@ -28,6 +86,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: Homebrew/actions/setup-homebrew@main
       - name: Select newest Xcode
         # The runner's default Xcode 15.4 ships Clang 15 (C++14 default), but
@@ -49,10 +109,12 @@ jobs:
           mkdir -p "$(dirname "$tap")"
           ln -s "$GITHUB_WORKSPACE" "$tap"
       - name: Build + bottle
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           brew install --build-bottle --verbose ben-dev-au/tap/fnd
           brew bottle --json --no-rebuild \
-            --root-url="https://github.com/ben-dev-au/homebrew-tap/releases/download/fnd-bottles-${{ inputs.version }}" \
+            --root-url="https://github.com/ben-dev-au/homebrew-tap/releases/download/fnd-bottles-$VERSION" \
             ben-dev-au/tap/fnd
       - uses: actions/upload-artifact@v5
         with:
@@ -62,10 +124,16 @@ jobs:
             *.bottle.json
 
   publish:
-    needs: build
+    needs: [resolve, build]
     runs-on: macos-14
+    permissions:
+      # The only job that writes: creates the bottle release and pushes the
+      # `bottle do` commit back to main.
+      contents: write
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: Homebrew/actions/setup-homebrew@main
       - name: Link this checkout as the tap
         run: |
@@ -82,13 +150,14 @@ jobs:
       - name: Upload bottles to a GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
-          tag="fnd-bottles-${{ inputs.version }}"
+          tag="fnd-bottles-$VERSION"
           # brew writes the local bottle as `name--version`, but the URL Homebrew
           # builds from root_url uses a single dash; rename before upload or it 404s.
           for f in bottles/*.bottle.tar.gz; do mv "$f" "${f/--/-}"; done
           gh release create "$tag" bottles/*.bottle.tar.gz --title "$tag" \
-            --notes "fnd ${{ inputs.version }} bottles" \
+            --notes "fnd $VERSION bottles" \
             || gh release upload "$tag" bottles/*.bottle.tar.gz --clobber
       - name: Commit + push the bottle block
         # Push the new commit explicitly to main. Authenticate with the token
@@ -97,7 +166,32 @@ jobs:
         # causes `could not read Username for github.com`.
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           git -c user.name="fnd-bottle-bot" -c user.email="actions@github.com" \
-            commit -am "fnd ${{ inputs.version }}: bottles"
+            commit -am "fnd $VERSION: bottles"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:main
+
+  smoke:
+    name: install from the published bottle
+    # End-to-end check of exactly what a user runs. This is the gate that was
+    # missing when 0.0.5's formula shipped pointing at 0.0.4's bottle release
+    # and every `brew upgrade fnd` 404'd for twelve hours.
+    needs: [resolve, publish]
+    runs-on: macos-14
+    steps:
+      - uses: Homebrew/actions/setup-homebrew@main
+      - name: brew install from the tap
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Tap from GitHub, not the local checkout — this must exercise the
+          # formula and bottle URL a real user resolves.
+          brew tap ben-dev-au/tap
+          brew install ben-dev-au/tap/fnd
+          out=$(fnd version 2>&1)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -qF "$VERSION" \
+            || { echo "::error::\`fnd version\` did not report $VERSION"; exit 1; }
+          echo "Homebrew install OK: fnd $VERSION"
