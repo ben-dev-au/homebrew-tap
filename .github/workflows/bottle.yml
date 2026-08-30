@@ -195,3 +195,40 @@ jobs:
           printf '%s\n' "$out" | grep -qF "$VERSION" \
             || { echo "::error::\`fnd version\` did not report $VERSION"; exit 1; }
           echo "Homebrew install OK: fnd $VERSION"
+
+  report-failure:
+    name: raise a tracking issue
+    needs: [resolve, build, publish, smoke]
+    # A failure here means `brew install` is broken for everyone: the release
+    # bot strips the previous `bottle do` block on bump, so main serves a
+    # source build that this job just proved does not compile. v1.0.0 sat in
+    # exactly that state, unnoticed, because nothing reported it.
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      # Only what `gh issue` needs. No checkout, so no contents scope either.
+      issues: write
+    steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          title="bottle: brew install is broken"
+          body="The bottle workflow failed for fnd \`${VERSION:-unknown}\`: $RUN_URL
+
+          \`brew install ben-dev-au/tap/fnd\` is broken for everyone until this is
+          fixed — with no \`bottle do\` block on main, users fall back to a source
+          build, which is what just failed.
+
+          Re-run the workflow by hand once the formula is fixed."
+          existing=$(gh issue list --search "$title in:title" --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

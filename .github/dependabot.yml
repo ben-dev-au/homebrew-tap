@@ -1,0 +1,18 @@
+version: 2
+
+updates:
+  # bottle.yml pins actions by major and nothing was watching them drift.
+  # Minor and patch land grouped; majors arrive individually so a breaking
+  # jump is attributable to one PR.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 5
