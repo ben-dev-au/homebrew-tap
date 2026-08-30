@@ -33,7 +33,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       needed: ${{ steps.v.outputs.needed }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - id: v
@@ -85,7 +85,7 @@ jobs:
         os: [macos-14]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: Homebrew/actions/setup-homebrew@main
@@ -131,7 +131,7 @@ jobs:
       # `bottle do` commit back to main.
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: Homebrew/actions/setup-homebrew@main
