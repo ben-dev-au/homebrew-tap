@@ -11,7 +11,6 @@ class Fnd < Formula
   end
 
   depends_on "python@3.13"
-  depends_on "swig" => :build
   depends_on "rust" => :build
   depends_on "libxml2"
   depends_on "libxslt"
