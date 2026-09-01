@@ -1,14 +1,9 @@
 class Fnd < Formula
   desc "Fast, free, keyboard-driven document search for macOS"
   homepage "https://github.com/ben-dev-au/fnd"
-  url "https://files.pythonhosted.org/packages/7a/a0/045037d55c4bb40324ee82ff3407523366e0fabbd76f707c4e8a3e9b3f60/fndr-1.0.0.tar.gz"
-  sha256 "f2004af43da995e6218a56a7436c64b85823d7422ecc33d952f7f922410c5a6e"
+  url "https://files.pythonhosted.org/packages/a0/71/8397283237b85833d706718293c353e7f3c19173db2770b1528b80d46c28/fndr-1.0.1.tar.gz"
+  sha256 "e0e082ef872cf1f3070968e43f18ab11f84b983016cea319bbd7b95f9fb049db"
   license "AGPL-3.0-or-later"
-
-  bottle do
-    root_url "https://github.com/ben-dev-au/homebrew-tap/releases/download/fnd-bottles-1.0.0"
-    sha256 cellar: :any, arm64_sonoma: "7b9fddcc6212f12fc896fb0985c3774991cd8cc2f066eef72ebffaadce939c02"
-  end
 
   depends_on "python@3.13"
   depends_on "rust" => :build
