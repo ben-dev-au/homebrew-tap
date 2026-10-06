@@ -1,14 +1,6 @@
 name: bottle
-# Self-host bottles for the from-source fnd formula. Runs automatically when a
-# formula bump lands on main — the release bot strips the previous version's
-# `bottle do` block, so main serves source-only builds until this finishes —
-# and can still be dispatched by hand for a rebuild. Builds on macOS runners,
-# produces relocatable bottles, uploads them to a GitHub release, and writes
-# the `bottle do` block back into the formula.
-#
-# NOTE: macos-13 is the last Intel runner GitHub offers; if it's retired or
-# can't be scheduled, drop x86_64 and ship arm64-only bottles (Intel users
-# fall back to building from source).
+# A formula bump has no `bottle do` block, so users build from source until
+# this workflow commits one.
 on:
   workflow_dispatch:
     inputs:
@@ -21,8 +13,7 @@ on:
       - Formula/fnd.rb
 
 permissions:
-  # Least privilege: only `publish` writes (bottle release + formula commit).
-  # resolve/build merely read the formula and compile.
+  # Only `publish` writes.
   contents: read
 
 jobs:
@@ -38,16 +29,12 @@ jobs:
           persist-credentials: false
       - id: v
         env:
-          # Via env, not inline `${{ }}`, so the input can't be shell-injected.
+          # Via env so the input can't be shell-injected.
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          # The formula is the source of truth: `brew install --build-bottle`
-          # builds whatever its url points at, so a dispatch input that
-          # disagrees would upload that build under the wrong tag — the same
-          # mislabelling that left 0.0.5 serving a 404. Derive from the url
-          # (PEP 625-normalised to `.../fndr-<version>.tar.gz`) and treat any
-          # input as an assertion about it, not an override.
+          # The formula url is what gets built, so the version comes from it.
+          # A dispatch input can only confirm it, never override it.
           formula_version=$(sed -n 's|^  url ".*/fndr-\(.*\)\.tar\.gz"$|\1|p' Formula/fnd.rb)
           [ -n "$formula_version" ] || { echo "::error::could not determine version from Formula/fnd.rb"; exit 1; }
           if [ -n "$INPUT_VERSION" ] && [ "$INPUT_VERSION" != "$formula_version" ]; then
@@ -55,18 +42,14 @@ jobs:
             exit 1
           fi
           ver="$formula_version"
-          # Reject anything that isn't a plain version before it can reach a
-          # shell downstream. Permissive enough for the rc/post/dev suffixes
-          # `uv version --bump` can produce.
+          # Reject anything but a plain version (rc/post/dev suffixes allowed)
+          # before it reaches a shell downstream.
           case "$ver" in
           *[!0-9A-Za-z.+-]*) echo "::error::refusing implausible version '$ver'"; exit 1 ;;
           esac
           echo "version=$ver" >> "$GITHUB_OUTPUT"
-          # On a push, skip when the formula already carries bottles for this
-          # version — that is this workflow's own commit landing back on main.
-          # (Pushes made with GITHUB_TOKEN don't retrigger workflows either, so
-          # this is belt-and-braces.) A hand dispatch always rebuilds: asking
-          # for one is an explicit request to replace the existing bottle.
+          # A push that already has this version's bottles is this workflow's
+          # own commit. A dispatch always rebuilds.
           if [ "$GITHUB_EVENT_NAME" = "push" ] && grep -q "fnd-bottles-$ver" Formula/fnd.rb; then
             echo "needed=false" >> "$GITHUB_OUTPUT"
             echo "::notice::formula already bottled for $ver — nothing to do"
@@ -79,30 +62,24 @@ jobs:
     if: needs.resolve.outputs.needed == 'true'
     strategy:
       matrix:
-        # arm64 only: GitHub is retiring the macos-13 Intel runner. Intel users
-        # build from source via the formula (the CXX -std fix is in `install`).
-        # Re-add "macos-13" here to also bottle x86_64 if a runner is available.
-        os: [macos-14]
+        # A bottle pours only on its build macOS or newer: use the oldest
+        # Homebrew supports. No Intel bottle.
+        os: [macos-15]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: Homebrew/actions/setup-homebrew@main
-      - name: Select newest Xcode
-        # The runner's default Xcode 15.4 ships Clang 15 (C++14 default), but
-        # MuPDF 1.27's C++ bindings need C++17 (thread_local, std::vector init,
-        # stricter exception specs). Newer Xcode = Clang 16+ = C++17 default,
-        # matching the local build that compiles cleanly.
+      # The runner image links bin/openssl to openssl@1.1 outside brew, which
+      # fails openssl@3's link step.
+      - name: Remove the runner image's openssl@1.1 link
         run: |
-          xc=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
-          echo "selecting $xc"
-          sudo xcode-select -s "$xc"
-          clang++ --version
+          link="$(brew --prefix)/bin/openssl"
+          if [[ "$(readlink "$link" || true)" == *openssl@1.1* ]]; then rm "$link"; fi
       - name: Link this checkout as the tap
-        # `brew tap <name> <path>` errors with a remote mismatch because the
-        # tap is already known by its GitHub URL. Symlinking the checkout into
-        # Homebrew's Taps dir makes `brew` build the formula from THIS checkout.
+        # `brew tap <name> <path>` fails on a remote mismatch; the symlink
+        # makes brew use this checkout.
         run: |
           tap="$(brew --repository)/Library/Taps/ben-dev-au/homebrew-tap"
           rm -rf "$tap"
@@ -125,10 +102,8 @@ jobs:
 
   publish:
     needs: [resolve, build]
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
-      # The only job that writes: creates the bottle release and pushes the
-      # `bottle do` commit back to main.
       contents: write
     steps:
       - uses: actions/checkout@v7
@@ -153,17 +128,13 @@ jobs:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           tag="fnd-bottles-$VERSION"
-          # brew writes the local bottle as `name--version`, but the URL Homebrew
-          # builds from root_url uses a single dash; rename before upload or it 404s.
+          # brew writes `name--version`; root_url expects `name-version`.
           for f in bottles/*.bottle.tar.gz; do mv "$f" "${f/--/-}"; done
           gh release create "$tag" bottles/*.bottle.tar.gz --title "$tag" \
             --notes "fnd $VERSION bottles" \
             || gh release upload "$tag" bottles/*.bottle.tar.gz --clobber
       - name: Commit + push the bottle block
-        # Push the new commit explicitly to main. Authenticate with the token
-        # directly — the checkout's stored credentials aren't reliably present
-        # this late in the job (after setup-homebrew + the tap symlink), which
-        # causes `could not read Username for github.com`.
+        # The checkout persists no credentials, so push with the token.
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.resolve.outputs.version }}
@@ -174,39 +145,38 @@ jobs:
 
   smoke:
     name: install from the published bottle
-    # End-to-end check of exactly what a user runs. This is the gate that was
-    # missing when 0.0.5's formula shipped pointing at 0.0.4's bottle release
-    # and every `brew upgrade fnd` 404'd for twelve hours.
     needs: [resolve, publish]
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: Homebrew/actions/setup-homebrew@main
+      # The runner image links bin/openssl to openssl@1.1 outside brew, which
+      # fails openssl@3's link step.
+      - name: Remove the runner image's openssl@1.1 link
+        run: |
+          link="$(brew --prefix)/bin/openssl"
+          if [[ "$(readlink "$link" || true)" == *openssl@1.1* ]]; then rm "$link"; fi
       - name: brew install from the tap
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
-          # Tap from GitHub, not the local checkout — this must exercise the
-          # formula and bottle URL a real user resolves.
+          # Tap from GitHub, not the checkout, to resolve the formula and
+          # bottle URL a user gets.
           brew tap ben-dev-au/tap
           brew install ben-dev-au/tap/fnd
           out=$(fnd version 2>&1)
           printf '%s\n' "$out"
-          printf '%s\n' "$out" | grep -qF "$VERSION" \
+          printf '%s\n' "$out" | grep -qFx "$VERSION" \
             || { echo "::error::\`fnd version\` did not report $VERSION"; exit 1; }
           echo "Homebrew install OK: fnd $VERSION"
 
   report-failure:
     name: raise a tracking issue
     needs: [resolve, build, publish, smoke]
-    # A failure here means `brew install` is broken for everyone: the release
-    # bot strips the previous `bottle do` block on bump, so main serves a
-    # source build that this job just proved does not compile. v1.0.0 sat in
-    # exactly that state, unnoticed, because nothing reported it.
+    # Any failure leaves `brew install` broken for users.
     if: failure()
     runs-on: ubuntu-latest
     permissions:
-      # Only what `gh issue` needs. No checkout, so no contents scope either.
       issues: write
     steps:
       - name: Open or update the tracking issue
