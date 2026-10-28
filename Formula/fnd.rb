@@ -5,6 +5,11 @@ class Fnd < Formula
   sha256 "014302d8015595f794ea2b28266ec707cc8aa1ab3df2f812c85f61626f085694"
   license "AGPL-3.0-or-later"
 
+  bottle do
+    root_url "https://github.com/ben-dev-au/homebrew-tap/releases/download/fnd-bottles-1.1.2"
+    sha256 cellar: :any, arm64_sequoia: "623ca637dee9fe9cdec011b27ca56a0498fa1346355caaab93ab134b0b4a81b3"
+  end
+
   depends_on "python@3.13"
   depends_on "rust" => :build
   depends_on "libxml2"
